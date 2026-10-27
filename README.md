@@ -1,4 +1,4 @@
-# Lab NIfTI Viewer
+# qMRLab NIfTI Viewer
 
 **Live: https://qmrlab.org/viewer**
 
