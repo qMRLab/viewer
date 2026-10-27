@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lab NIfTI Viewer</title>
+<style>/*STYLE*/</style>
+</head>
+<body>
+<header>
+  <strong>Lab NIfTI Viewer</strong>
+  <button id="open" class="primary">Open files…</button>
+  <input id="file" type="file" multiple accept=".nii,.gz,.nii.gz" hidden>
+  <label>View <select id="layout">
+    <option value="ortho">3 planes</option><option value="ax">Axial</option>
+    <option value="sag">Sagittal</option><option value="cor">Coronal</option></select></label>
+  <label title="One plane only: each visible image in its own panel (up to 3, bottom of the layer list on the left), with the same slice, zoom and cursor"><input id="sbs" type="checkbox"> Side by side</label>
+  <label>Left–right <select id="radio">
+    <option value="radiological">Radiological (R on left)</option>
+    <option value="neurological">Neurological (L on left)</option></select></label>
+  <label><input id="xhair" type="checkbox" checked> Crosshair</label>
+  <label><input id="cbar" type="checkbox" checked> Colour bar</label>
+  <label><input id="lett" type="checkbox" checked> Labels</label>
+  <button id="shot" title="Save the views as a PNG">Save screenshot</button>
+  <span id="status"></span>
+</header>
+<main>
+  <aside>
+    <section>
+      <h2>Layers <small>(top is drawn on top)</small></h2>
+      <div id="layers"></div>
+    </section>
+    <section id="layerctl"></section>
+    <section>
+      <h2>Difference</h2>
+      <div class="diff"><select id="diffA"></select> − <select id="diffB"></select>
+      <button id="diff">Add</button></div>
+      <p class="hint">Each voxel of A minus the B voxel at the same position (nearest; no smoothing). Shown with a diverging colour map, symmetric around 0.</p>
+    </section>
+    <section>
+      <h2>Cursor</h2>
+      <div id="cursor"></div>
+    </section>
+    <details class="help"><summary>Controls</summary>
+      <ul>
+        <li>Click or drag: move the cursor</li>
+        <li>Scroll, or ↑ / ↓: change slice</li>
+        <li>Ctrl/⌘ + scroll, or + / −: zoom</li>
+        <li>Shift-drag or right-drag: pan</li>
+        <li>Double-click: reset zoom</li>
+      </ul>
+      <p>Files are read in your browser. Nothing is uploaded.</p>
+    </details>
+  </aside>
+  <div id="views"></div>
+</main>
+<script type="module">
+/*GLUE*/
+const WASM_BYTES = Uint8Array.from(atob("/*WASM_B64*/"), c => c.charCodeAt(0));
+/*APP*/
+</script>
+</body>
+</html>
