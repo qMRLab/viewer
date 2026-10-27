@@ -4,36 +4,51 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>qMRLab NIfTI Viewer</title>
+<!-- Fonts load when online; offline, the system fonts below take over. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>/*STYLE*/</style>
 </head>
-<body>
+<body class="empty">
 <header>
-  <strong>qMRLab NIfTI Viewer</strong>
-  <button id="open" class="primary">Open files…</button>
+  <div class="brand">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="2.5" width="19" height="19" rx="5"/><path d="M12 6v12M6 12h12"/><circle cx="12" cy="12" r="2.6"/></svg>
+    <span>qMRLab <b>NIfTI Viewer</b></span>
+  </div>
+  <button id="open" class="primary">Open files</button>
   <input id="file" type="file" multiple accept=".nii,.gz,.nii.gz" hidden>
-  <label>View <select id="layout">
-    <option value="ortho">3 planes</option><option value="ax">Axial</option>
-    <option value="sag">Sagittal</option><option value="cor">Coronal</option></select></label>
-  <label title="One plane only: each visible image in its own panel (up to 3, bottom of the layer list on the left), with the same slice, zoom and cursor"><input id="sbs" type="checkbox"> Side by side</label>
-  <label>Left–right <select id="radio">
-    <option value="radiological">Radiological (R on left)</option>
-    <option value="neurological">Neurological (L on left)</option></select></label>
-  <label><input id="xhair" type="checkbox" checked> Crosshair</label>
-  <label><input id="cbar" type="checkbox" checked> Colour bar</label>
-  <label><input id="lett" type="checkbox" checked> Labels</label>
-  <button id="shot" title="Save the views as a PNG">Save screenshot</button>
+  <div class="group">
+    <label class="field">View <select id="layout">
+      <option value="ortho">3 planes</option><option value="ax">Axial</option>
+      <option value="sag">Sagittal</option><option value="cor">Coronal</option></select></label>
+    <label class="field" title="World axes: the planes follow the scanner axes, and every image is resampled onto them. Image slices: the planes follow the first image's own voxel grid, so its slices are shown as acquired, even when they are oblique.">Planes <select id="space">
+      <option value="world">World axes</option><option value="slices">Image slices</option></select></label>
+    <label class="chip" title="One plane only: each visible image in its own panel (up to 3, bottom of the layer list on the left), with the same slice, zoom and cursor"><input id="sbs" type="checkbox"> Side by side</label>
+  </div>
+  <div class="group">
+    <label class="field">Left–right <select id="radio">
+      <option value="radiological">Radiological (R on left)</option>
+      <option value="neurological">Neurological (L on left)</option></select></label>
+  </div>
+  <div class="group">
+    <label class="chip"><input id="xhair" type="checkbox" checked> Crosshair</label>
+    <label class="chip"><input id="cbar" type="checkbox" checked> Colour bar</label>
+    <label class="chip"><input id="lett" type="checkbox" checked> Labels</label>
+  </div>
   <span id="status"></span>
+  <button id="shot" title="Save the views as a PNG">Save screenshot</button>
 </header>
 <main>
   <aside>
     <section>
-      <h2>Layers <small>(top is drawn on top)</small></h2>
+      <h2>Layers <small>top is drawn on top</small></h2>
       <div id="layers"></div>
     </section>
     <section id="layerctl"></section>
     <section>
       <h2>Difference</h2>
-      <div class="diff"><select id="diffA"></select> − <select id="diffB"></select>
+      <div class="diff"><select id="diffA"></select><span class="minus">−</span><select id="diffB"></select>
       <button id="diff">Add</button></div>
       <p class="hint">Each voxel of A minus the B voxel at the same position (nearest; no smoothing). Shown with a diverging colour map, symmetric around 0.</p>
     </section>
@@ -52,7 +67,13 @@
       <p>Files are read in your browser. Nothing is uploaded.</p>
     </details>
   </aside>
-  <div id="views"></div>
+  <div id="views">
+    <div id="empty" role="button" tabindex="0">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5M5 14v4.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V14"/></svg>
+      <strong>Drag and drop a NIfTI image to load</strong>
+      <span>or click to choose files · .nii or .nii.gz · read in your browser, never uploaded</span>
+    </div>
+  </div>
 </main>
 <script type="module">
 /*GLUE*/

@@ -15,6 +15,9 @@ warped template. The interface is plain HTML/JS (`web/`).
 ## What it does (what Lab 4 needs)
 
 - Axial, sagittal, coronal or all three; radiological or neurological left–right
+- Planes along the world (scanner) axes, or along the first image's own slices ("Image slices"),
+  so an oblique acquisition can be seen slice by slice as acquired; overlays stay aligned either way
+- Light or dark interface, following the system setting (image panels stay black)
 - Side by side (one plane): up to three images in their own panels, same slice, cursor and zoom (Ex 1C:
   MT on / MT off). "Same for all" gives every image the same display range so intensities compare
 - Any number of layers: colour maps (gray, hot, viridis, magma, inferno, plasma, cividis, turbo, jet,

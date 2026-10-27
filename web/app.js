@@ -62,7 +62,7 @@ const LUTS = Object.fromEntries(Object.entries(ANCHORS).map(([k, a]) => [k, make
 
 // ---- state ---------------------------------------------------------------------------------
 const state = {
-  layers: [], selected: -1, cursor: [0, 0, 0], layout: "ortho", radiological: true,
+  layers: [], selected: -1, cursor: [0, 0, 0], layout: "ortho", radiological: true, space: "world",
   crosshair: true, colorbar: true, letters: true, sideBySide: false, nextId: 1,
 };
 const PLANES = {
@@ -126,38 +126,88 @@ function addLayer(name, vol, opts = {}) {
 }
 
 // ---- geometry ------------------------------------------------------------------------------
+// The views work in a "frame": three orthonormal directions in world space. In world space it is
+// the scanner axes. In slice space it is the first image's own voxel grid, each axis matched to the
+// world axis it is closest to, so every view shows that image's slices as acquired, even oblique
+// ones. Either way, every layer is still sampled at world positions, so overlays stay aligned.
 function base() { return state.layers[0]; }
 
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const WORLD = [0, 1, 2].map(w => ({ dir: [0, 1, 2].map(i => +(i === w)), axis: w }));
+
+function imageFrame(L) {
+  if (L.frameAxes) return L.frameAxes;
+  const a = L.info.affine, cols = [0, 1, 2].map(c => [a[0][c], a[1][c], a[2][c]]);
+  const e = [], used = new Set();
+  for (const w of [0, 1, 2]) {  // each world axis takes the voxel axis closest to it, same direction
+    let best = 0, bv = -1;
+    cols.forEach((c, i) => { const f = Math.abs(c[w]) / Math.hypot(...c); if (!used.has(i) && f > bv) { bv = f; best = i; } });
+    used.add(best);
+    const c = cols[best], n = Math.hypot(...c) * (Math.sign(c[w]) || 1);
+    e[w] = { dir: c.map(x => x / n), axis: best, step: Math.hypot(...c) };
+  }
+  // Orthonormalise, keeping the axis with the largest voxel spacing (the slice direction) exact.
+  const done = [];
+  for (const w of [0, 1, 2].sort((i, j) => e[j].step - e[i].step)) {
+    let d = e[w].dir;
+    for (const o of done) { const k = dot(d, o); d = d.map((x, i) => x - k * o[i]); }
+    const n = Math.hypot(...d);
+    e[w].dir = d.map(x => x / n);
+    done.push(e[w].dir);
+  }
+  return (L.frameAxes = e);
+}
+
+function frame() { return state.space === "slices" && base() ? imageFrame(base()) : WORLD; }
+function toFrame(p) { return frame().map(e => dot(e.dir, p)); }
+function fromFrame(f) { const F = frame(); return [0, 1, 2].map(i => F[0].dir[i] * f[0] + F[1].dir[i] * f[1] + F[2].dir[i] * f[2]); }
+
+// Bounds of the first image in frame coordinates: its voxel corners, projected.
+function frameBounds() {
+  const L = base(), key = state.space;
+  if (L.fb && L.fb.key === key) return L.fb.b;
+  const d = L.info.dims, b = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
+  for (const i of [-0.5, d[0] - 0.5]) for (const j of [-0.5, d[1] - 0.5]) for (const k of [-0.5, d[2] - 0.5]) {
+    const f = toFrame(L.vol.world_of(i, j, k));
+    for (let a = 0; a < 3; a++) { b[a] = Math.min(b[a], f[a]); b[a + 3] = Math.max(b[a + 3], f[a]); }
+  }
+  L.fb = { key, b };
+  return b;
+}
+
 function voxelStep(axis) {
+  if (state.space === "slices") return frame()[axis].step;
   const a = base().info.affine;
   return Math.max(Math.abs(a[axis][0]), Math.abs(a[axis][1]), Math.abs(a[axis][2])) || 1;
 }
 
 function viewGeometry(view) {
-  const P = PLANES[view.plane], b = base().vol.bounds();
+  const P = PLANES[view.plane], b = frameBounds(), c = toFrame(state.cursor);
   const W = view.canvas.width, H = view.canvas.height;
   const hs = P.h === 0 && state.radiological ? -1 : 1; // radiological: screen-right is subject-left (−x)
   const hspan = b[P.h + 3] - b[P.h], vspan = b[P.v + 3] - b[P.v];
   const scale = Math.max(hspan / W, vspan / H) / view.zoom; // mm per pixel
   const ch = (b[P.h] + b[P.h + 3]) / 2 + view.pan[0], cv = (b[P.v] + b[P.v + 3]) / 2 + view.pan[1];
-  const origin = [0, 0, 0], u = [0, 0, 0], v = [0, 0, 0];
-  origin[P.n] = state.cursor[P.n];
-  origin[P.h] = ch - hs * (W / 2) * scale;
-  origin[P.v] = cv + (H / 2) * scale;
-  u[P.h] = hs * scale;
-  v[P.v] = -scale;
-  return { P, W, H, hs, scale, ch, cv, origin, u, v };
+  const of = [0, 0, 0], uf = [0, 0, 0], vf = [0, 0, 0]; // in frame coordinates
+  of[P.n] = c[P.n];
+  of[P.h] = ch - hs * (W / 2) * scale;
+  of[P.v] = cv + (H / 2) * scale;
+  uf[P.h] = hs * scale;
+  vf[P.v] = -scale;
+  const lin = f => fromFrame(f);
+  return { P, W, H, hs, scale, ch, cv, of, uf, vf, origin: lin(of), u: lin(uf), v: lin(vf) };
 }
 
 function pixelToWorld(view, x, y) {
-  const g = viewGeometry(view), p = [...state.cursor];
-  p[g.P.h] = g.origin[g.P.h] + (x + 0.5) * g.u[g.P.h];
-  p[g.P.v] = g.origin[g.P.v] + (y + 0.5) * g.v[g.P.v];
-  return p;
+  const g = viewGeometry(view), p = toFrame(state.cursor);
+  p[g.P.h] = g.of[g.P.h] + (x + 0.5) * g.uf[g.P.h];
+  p[g.P.v] = g.of[g.P.v] + (y + 0.5) * g.vf[g.P.v];
+  return fromFrame(p);
 }
 
 function worldToPixel(g, p) {
-  return [(p[g.P.h] - g.origin[g.P.h]) / g.u[g.P.h] - 0.5, (p[g.P.v] - g.origin[g.P.v]) / g.v[g.P.v] - 0.5];
+  const f = toFrame(p);
+  return [(f[g.P.h] - g.of[g.P.h]) / g.uf[g.P.h] - 0.5, (f[g.P.v] - g.of[g.P.v]) / g.vf[g.P.v] - 0.5];
 }
 
 // ---- rendering -----------------------------------------------------------------------------
@@ -172,6 +222,7 @@ function allViews() { return [...Object.values(views), ...panels]; }
 function shownViews() { return allViews().filter(v => v.wrap.style.display !== "none"); }
 
 function drawAll() {
+  document.body.classList.toggle("empty", !state.layers.length);
   const sbs = state.sideBySide && state.layout !== "ortho";
   const imgs = sbs ? state.layers.filter(L => L.visible).slice(0, panels.length) : [];
   for (const [key, view] of Object.entries(views)) {
@@ -215,7 +266,7 @@ function drawView(view) {
   const dpr = window.devicePixelRatio || 1;
   if (state.crosshair) {
     const [cx, cy] = worldToPixel(g, state.cursor);
-    ctx.strokeStyle = "rgba(0,255,0,0.7)";
+    ctx.strokeStyle = "rgba(185,242,75,0.9)";
     ctx.lineWidth = dpr;
     ctx.beginPath();
     ctx.moveTo(cx + 0.5, 0); ctx.lineTo(cx + 0.5, H);
@@ -263,11 +314,12 @@ function paintLayer(L, vals, W, H, out, a) {
 }
 
 function label(ctx, text, x, y, dpr, align = "left", base = "top", size = 13) {
-  ctx.font = `${size * dpr}px system-ui, sans-serif`;
+  ctx.font = `500 ${(size - 1) * dpr}px Geist, system-ui, sans-serif`;
+  ctx.lineJoin = "round";
   ctx.textAlign = align;
   ctx.textBaseline = base;
-  ctx.lineWidth = 3 * dpr;
-  ctx.strokeStyle = "rgba(0,0,0,0.8)";
+  ctx.lineWidth = 2.5 * dpr;
+  ctx.strokeStyle = "rgba(0,0,0,0.7)";
   ctx.strokeText(text, x, y);
   ctx.fillStyle = "#fff";
   ctx.fillText(text, x, y);
@@ -283,8 +335,10 @@ function drawLetters(ctx, g, W, H, dpr, only) {
   label(ctx, b, W / 2, H - m, dpr, "center", "bottom", 15);
   const B = only || base();
   const vox = B.vol.voxel_at(...state.cursor);
-  const axisName = ["x", "y", "z"][g.P.n];
-  label(ctx, `${g.P.name}  ${axisName} = ${state.cursor[g.P.n].toFixed(1)} mm`, m, m, dpr, "left", "top", 11);
+  const pos = state.space === "slices"
+    ? `${"ijk"[frame()[g.P.n].axis]} = ${Math.round(base().vol.voxel_at(...state.cursor)[frame()[g.P.n].axis])}`
+    : `${"xyz"[g.P.n]} = ${state.cursor[g.P.n].toFixed(1)} mm`;
+  label(ctx, `${g.P.name}  ${pos}`, m, m, dpr, "left", "top", 11);
   label(ctx, `${B.name} voxel [${vox.join(", ")}]`, m, m + 15 * dpr, dpr, "left", "top", 11);
 }
 
@@ -510,8 +564,9 @@ function setupView(plane, panel) {
 }
 
 function moveSlice(view, dir) {
-  const n = PLANES[view.plane].n;
-  state.cursor[n] += dir * voxelStep(n);
+  const n = PLANES[view.plane].n, f = toFrame(state.cursor);
+  f[n] += dir * voxelStep(n);
+  state.cursor = fromFrame(f);
 }
 
 window.addEventListener("keydown", e => {
@@ -535,6 +590,8 @@ function init() {
   ["ax", "cor", "sag"].forEach(p => setupView(p, false));
   for (let i = 0; i < 3; i++) setupView("ax", true);
   $("#open").onclick = () => $("#file").click();
+  $("#empty").onclick = () => $("#file").click();
+  $("#empty").onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("#file").click(); } };
   $("#file").onchange = e => { openFiles([...e.target.files]); e.target.value = ""; };
   document.addEventListener("dragover", e => { e.preventDefault(); document.body.classList.add("drop"); });
   document.addEventListener("dragleave", e => { if (!e.relatedTarget) document.body.classList.remove("drop"); });
@@ -550,6 +607,7 @@ function init() {
     render();
   };
   $("#radio").onchange = e => { state.radiological = e.target.value === "radiological"; render(); };
+  $("#space").onchange = e => { state.space = e.target.value; allViews().forEach(v => { v.pan = [0, 0]; }); render(); };
   $("#xhair").onchange = e => { state.crosshair = e.target.checked; render(); };
   $("#cbar").onchange = e => { state.colorbar = e.target.checked; render(); };
   $("#lett").onchange = e => { state.letters = e.target.checked; render(); };
@@ -561,6 +619,7 @@ function init() {
   // ?load=a.nii.gz,b.nii.gz loads files by URL when the page is served over http(s).
   const q = new URLSearchParams(location.search);
   if (q.get("layout")) { state.layout = q.get("layout"); $("#layout").value = state.layout; }
+  if (q.get("space")) { state.space = q.get("space"); $("#space").value = state.space; }
   if (q.get("sbs")) { state.sideBySide = true; $("#sbs").checked = true; }
   if (q.get("same")) setTimeout(() => $("#same") && $("#same").click(), 3000); // testing only
   if (q.get("load")) (async () => {
